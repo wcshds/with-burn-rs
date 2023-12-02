@@ -135,7 +135,7 @@ res_str = f"""
 #[test]
 fn test_behavior_align_with_pytorch() {{
     TestBackend::seed(0);
-    let config = LstmConfig::new({input_dim}, {hidden_dim}, false).with_bidirectional(true);
+    let config = LstmConfig::new({input_dim}, {hidden_dim}, true).with_bidirectional(true);
     let mut lstm = config.init::<TestBackend>();
 
     fn create_gate_controller<const D1: usize, const D2: usize>(
