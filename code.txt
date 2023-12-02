@@ -1,0 +1,96 @@
+#[test]
+fn test_behavior_align_with_pytorch() {
+    TestBackend::seed(0);
+    let config = LstmConfig::new(2, 4, false).with_bidirectional(true);
+    let mut lstm = config.init::<TestBackend>();
+
+    fn create_gate_controller<const D1: usize, const D2: usize>(
+        input_weights: [[f32; D1]; D2],
+        input_biases: [f32; D1],
+        hidden_weights: [[f32; D1]; D1],
+        hidden_biases: [f32; D1],
+    ) -> GateController<TestBackend> {
+        let d_input = input_weights[0].len();
+        let d_output = input_weights.len();
+
+        let input_record = LinearRecord {
+            weight: Param::from(Tensor::from_data(Data::from(input_weights))),
+            bias: Some(Param::from(Tensor::from_data(Data::from(input_biases)))),
+        };
+        let hidden_record = LinearRecord {
+            weight: Param::from(Tensor::from_data(Data::from(hidden_weights))),
+            bias: Some(Param::from(Tensor::from_data(Data::from(hidden_biases)))),
+        };
+        GateController::create_with_weights(
+            d_input,
+            d_output,
+            true,
+            Initializer::XavierUniform { gain: 1.0 },
+            input_record,
+            hidden_record,
+        )
+    }
+        let input = Tensor::<TestBackend, 3>::from_data(Data::from([[[-1.396, -0.448], [0.471, -0.516], [-0.029, 0.788]]]));
+
+        lstm.input_gate = create_gate_controller(
+            [[0.072, -0.295, -0.401, -0.117], [0.021, -0.379, -0.362, -0.243]],
+            [-0.091, 0.280, 0.191, 0.257],
+            [[0.044, -0.079, 0.022, 0.293], [0.442, -0.369, 0.342, 0.351], [-0.384, -0.416, -0.085, 0.060], [-0.203, -0.327, -0.326, -0.199]],
+            [-0.290, -0.048, 0.020, -0.492],
+        );
+
+        lstm.forget_gate = create_gate_controller(
+            [[0.339, -0.492, -0.359, -0.142], [0.427, 0.106, 0.053, -0.129]],
+            [-0.323, -0.183, 0.279, 0.078],
+            [[0.143, -0.226, -0.170, -0.159], [0.143, -0.265, 0.387, 0.373], [0.154, -0.471, -0.086, -0.234], [-0.281, 0.297, 0.047, 0.255]],
+            [-0.468, -0.024, 0.094, 0.177],
+        );
+
+        lstm.cell_gate = create_gate_controller(
+            [[0.413, 0.071, 0.471, -0.308], [-0.179, -0.069, -0.413, -0.371]],
+            [0.101, 0.436, -0.317, -0.012],
+            [[0.225, 0.057, 0.205, 0.159], [-0.371, -0.118, 0.120, 0.237], [-0.034, -0.108, -0.258, 0.465], [0.234, 0.227, 0.106, 0.121]],
+            [0.348, -0.039, -0.167, -0.468],
+        );
+
+        lstm.output_gate = create_gate_controller(
+            [[0.439, 0.205, 0.171, -0.398], [0.073, 0.323, 0.316, -0.306]],
+            [-0.411, -0.095, -0.041, -0.323],
+            [[0.457, 0.187, -0.129, 0.196], [0.466, 0.052, -0.089, 0.168], [-0.110, -0.369, 0.313, 0.097], [0.121, 0.086, 0.257, 0.433]],
+            [0.250, -0.264, -0.053, 0.314],
+        );
+
+        lstm.input_gate_bw = Some(create_gate_controller(
+            [[-0.079, -0.353, 0.453, 0.334], [-0.221, -0.140, -0.366, -0.486]],
+            [0.046, -0.387, -0.261, 0.129],
+            [[-0.104, 0.206, -0.028, -0.139], [-0.497, -0.095, 0.298, 0.183], [0.411, -0.171, -0.026, 0.117], [0.199, -0.291, 0.035, -0.110]],
+            [-0.323, -0.249, -0.440, 0.311],
+        ));
+
+        lstm.forget_gate_bw = Some(create_gate_controller(
+            [[-0.187, 0.346, 0.254, 0.187], [0.495, 0.268, -0.352, -0.033]],
+            [0.090, 0.329, -0.326, 0.410],
+            [[-0.037, -0.014, -0.323, 0.093], [0.360, -0.310, 0.013, 0.103], [0.344, -0.259, 0.128, 0.102], [0.464, 0.020, 0.300, 0.399]],
+            [-0.249, -0.080, -0.327, 0.346],
+        ));
+
+        lstm.cell_gate_bw = Some(create_gate_controller(
+            [[-0.094, 0.491, -0.354, 0.358], [0.477, -0.142, -0.048, -0.039]],
+            [0.414, 0.204, -0.322, 0.333],
+            [[0.237, -0.103, -0.438, 0.009], [-0.298, -0.324, 0.497, 0.497], [0.229, -0.231, -0.347, 0.322], [0.305, -0.490, 0.235, 0.378]],
+            [0.250, -0.030, 0.281, 0.166],
+        ));
+
+        lstm.output_gate_bw = Some(create_gate_controller(
+            [[-0.085, -0.047, -0.324, 0.368], [-0.358, 0.337, 0.272, 0.014]],
+            [-0.420, -0.231, -0.143, 0.339],
+            [[-0.089, -0.109, -0.129, 0.062], [0.064, 0.399, -0.066, -0.385], [0.359, -0.484, 0.009, 0.447], [0.065, -0.290, 0.219, -0.497]],
+            [-0.116, 0.030, 0.304, -0.053],
+        ));
+
+        let expected_result = Data::from([[[-0.00554, 0.06758, -0.18708, 0.03910, 0.18016, -0.08207, 0.05790, 0.17310], [0.13305, 0.13886, -0.12495, -0.08695, 0.11744, 0.05214, -0.04040, 0.31659], [0.10717, 0.15028, -0.23859, -0.15636, 0.09032, 0.00800, -0.01093, 0.12325]]]);
+
+        let (_, hidden_state) = lstm.forward(input, None);
+
+        hidden_state.to_data().assert_approx_eq(&expected_result, 3)
+}
