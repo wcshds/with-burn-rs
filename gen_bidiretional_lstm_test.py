@@ -1,5 +1,6 @@
 import torch
-import numpy as np
+from tools import array_to_str
+
 
 batch = 1
 seq_length = 3
@@ -15,24 +16,8 @@ rand_input = torch.Tensor(
 ).reshape((batch, seq_length, input_dim))
 
 
-def array_to_str(array: np.ndarray, precision: int = 3):
-    shape = array.shape
-    str_array = (
-        np.array(
-            [
-                eval(f"""f\"{{each:.{precision}f}}\"""")
-                for each in array.flatten().tolist()
-            ]
-        )
-        .reshape(shape)
-        .tolist()
-    )
-
-    return str(str_array).replace("'", "")
-
-
 def get_gate_weights(param):
-    # It's a must to call transpose(), because burn's inner representation 
+    # It's a must to call transpose(), because burn's inner representation
     # of weights is [input_size, output_size]
     w1 = param.detach().numpy()[:hidden_dim].transpose(1, 0)
     w2 = param.detach().numpy()[hidden_dim : hidden_dim * 2].transpose(1, 0)
@@ -230,5 +215,5 @@ fn test_behavior_align_with_pytorch() {{
 }}
 """.strip()
 
-with open("code.txt", "w") as f:
+with open("bidirectional_lstm.txt", "w") as f:
     f.write(res_str)
