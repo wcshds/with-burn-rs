@@ -118,9 +118,9 @@ forward_result = model(rand_input)[0]
 
 res_str = f"""
 #[test]
-fn test_behavior_align_with_pytorch() {{
+fn test_bidirectional() {{
     TestBackend::seed(0);
-    let config = LstmConfig::new({input_dim}, {hidden_dim}, true).with_bidirectional(true);
+    let config = BiLstmConfig::new({input_dim}, {hidden_dim}, true);
     let mut lstm = config.init::<TestBackend>();
 
     fn create_gate_controller<const D1: usize, const D2: usize>(
@@ -179,33 +179,33 @@ fn test_behavior_align_with_pytorch() {{
             {output_gate_hidden_biases},
         );
 
-        lstm.input_gate_bw = Some(create_gate_controller(
+        lstm.input_gate_reverse = create_gate_controller(
             {input_gate_input_weights_reverse},
             {input_gate_input_biases_reverse},
             {input_gate_hidden_weights_reverse},
             {input_gate_hidden_biases_reverse},
-        ));
+        );
 
-        lstm.forget_gate_bw = Some(create_gate_controller(
+        lstm.forget_gate_reverse = create_gate_controller(
             {forget_gate_input_weights_reverse},
             {forget_gate_input_biases_reverse},
             {forget_gate_hidden_weights_reverse},
             {forget_gate_hidden_biases_reverse},
-        ));
+        );
 
-        lstm.cell_gate_bw = Some(create_gate_controller(
+        lstm.cell_gate_reverse = create_gate_controller(
             {cell_gate_input_weights_reverse},
             {cell_gate_input_biases_reverse},
             {cell_gate_hidden_weights_reverse},
             {cell_gate_hidden_biases_reverse},
-        ));
+        );
 
-        lstm.output_gate_bw = Some(create_gate_controller(
+        lstm.output_gate_reverse = create_gate_controller(
             {output_gate_input_weights_reverse},
             {output_gate_input_biases_reverse},
             {output_gate_hidden_weights_reverse},
             {output_gate_hidden_biases_reverse},
-        ));
+        );
 
         let expected_result = Data::from({array_to_str(forward_result.detach().numpy(), 5)});
 
