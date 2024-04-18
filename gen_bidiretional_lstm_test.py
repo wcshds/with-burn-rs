@@ -3,9 +3,9 @@ from tools import array_to_str
 
 
 batch = 1
-seq_length = 3
+seq_length = 4
 input_dim = 2
-hidden_dim = 4
+hidden_dim = 3
 
 model = torch.nn.LSTM(input_dim, hidden_dim, batch_first=True, bidirectional=True)
 rand_input = torch.Tensor(
@@ -14,6 +14,18 @@ rand_input = torch.Tensor(
         for each in torch.randn(batch, seq_length, input_dim).numpy().flatten().tolist()
     ]
 ).reshape((batch, seq_length, input_dim))
+h0 = torch.Tensor(
+    [
+        float(f"{each:.3f}")
+        for each in torch.randn(2, batch, hidden_dim).numpy().flatten().tolist()
+    ]
+).reshape((2, batch, hidden_dim))
+c0 = torch.Tensor(
+    [
+        float(f"{each:.3f}")
+        for each in torch.randn(2, batch, hidden_dim).numpy().flatten().tolist()
+    ]
+).reshape((2, batch, hidden_dim))
 
 
 def get_gate_weights(param):
@@ -114,31 +126,35 @@ for name, param in model.named_parameters():
             output_gate_hidden_biases_reverse,
         ) = get_gate_biases(param)
 
-forward_result = model(rand_input)[0]
+
+forward_result_with_init_state, (hn_with_init_state, cn_with_init_state) = model(rand_input, (h0, c0))
+forward_result_without_init_state, (hn_without_init_state, cn_without_init_state) = model(rand_input)
 
 res_str = f"""
 #[test]
 fn test_bidirectional() {{
     TestBackend::seed(0);
     let config = BiLstmConfig::new({input_dim}, {hidden_dim}, true);
-    let mut lstm = config.init::<TestBackend>();
+    let device = Default::default();
+    let mut lstm = config.init(&device);
 
     fn create_gate_controller<const D1: usize, const D2: usize>(
         input_weights: [[f32; D1]; D2],
         input_biases: [f32; D1],
         hidden_weights: [[f32; D1]; D1],
         hidden_biases: [f32; D1],
+        device: &Device<TestBackend>,
     ) -> GateController<TestBackend> {{
         let d_input = input_weights[0].len();
         let d_output = input_weights.len();
 
         let input_record = LinearRecord {{
-            weight: Param::from(Tensor::from_data(Data::from(input_weights))),
-            bias: Some(Param::from(Tensor::from_data(Data::from(input_biases)))),
+            weight: Param::from_data(Data::from(input_weights), device),
+            bias: Some(Param::from_data(Data::from(input_biases), device)),
         }};
         let hidden_record = LinearRecord {{
-            weight: Param::from(Tensor::from_data(Data::from(hidden_weights))),
-            bias: Some(Param::from(Tensor::from_data(Data::from(hidden_biases)))),
+            weight: Param::from_data(Data::from(hidden_weights), device),
+            bias: Some(Param::from_data(Data::from(hidden_biases), device)),
         }};
         GateController::create_with_weights(
             d_input,
@@ -149,69 +165,100 @@ fn test_bidirectional() {{
             hidden_record,
         )
     }}
-        let input = Tensor::<TestBackend, 3>::from_data(Data::from({array_to_str(rand_input.detach().numpy())}));
 
-        lstm.input_gate = create_gate_controller(
-            {input_gate_input_weights},
-            {input_gate_input_biases},
-            {input_gate_hidden_weights},
-            {input_gate_hidden_biases},
-        );
+    let input = Tensor::<TestBackend, 3>::from_data(
+        Data::from({array_to_str(rand_input.detach().numpy())}),
+        &device,
+    );
+    let h0 = Tensor::<TestBackend, 3>::from_data(
+        Data::from({array_to_str(h0.detach().numpy())}),
+        &device,
+    );
+    let c0 = Tensor::<TestBackend, 3>::from_data(
+        Data::from({array_to_str(c0.detach().numpy())}),
+        &device,
+    );
 
-        lstm.forget_gate = create_gate_controller(
-            {forget_gate_input_weights},
-            {forget_gate_input_biases},
-            {forget_gate_hidden_weights},
-            {forget_gate_hidden_biases},
-        );
+    lstm.forward.input_gate = create_gate_controller(
+        {input_gate_input_weights},
+        {input_gate_input_biases},
+        {input_gate_hidden_weights},
+        {input_gate_hidden_biases},
+        &device,
+    );
 
-        lstm.cell_gate = create_gate_controller(
-            {cell_gate_input_weights},
-            {cell_gate_input_biases},
-            {cell_gate_hidden_weights},
-            {cell_gate_hidden_biases},
-        );
+    lstm.forward.forget_gate = create_gate_controller(
+        {forget_gate_input_weights},
+        {forget_gate_input_biases},
+        {forget_gate_hidden_weights},
+        {forget_gate_hidden_biases},
+        &device,
+    );
 
-        lstm.output_gate = create_gate_controller(
-            {output_gate_input_weights},
-            {output_gate_input_biases},
-            {output_gate_hidden_weights},
-            {output_gate_hidden_biases},
-        );
+    lstm.forward.cell_gate = create_gate_controller(
+        {cell_gate_input_weights},
+        {cell_gate_input_biases},
+        {cell_gate_hidden_weights},
+        {cell_gate_hidden_biases},
+        &device,
+    );
 
-        lstm.input_gate_reverse = create_gate_controller(
-            {input_gate_input_weights_reverse},
-            {input_gate_input_biases_reverse},
-            {input_gate_hidden_weights_reverse},
-            {input_gate_hidden_biases_reverse},
-        );
+    lstm.forward.output_gate = create_gate_controller(
+        {output_gate_input_weights},
+        {output_gate_input_biases},
+        {output_gate_hidden_weights},
+        {output_gate_hidden_biases},
+        &device,
+    );
 
-        lstm.forget_gate_reverse = create_gate_controller(
-            {forget_gate_input_weights_reverse},
-            {forget_gate_input_biases_reverse},
-            {forget_gate_hidden_weights_reverse},
-            {forget_gate_hidden_biases_reverse},
-        );
+    lstm.reverse.input_gate = create_gate_controller(
+        {input_gate_input_weights_reverse},
+        {input_gate_input_biases_reverse},
+        {input_gate_hidden_weights_reverse},
+        {input_gate_hidden_biases_reverse},
+        &device,
+    );
 
-        lstm.cell_gate_reverse = create_gate_controller(
-            {cell_gate_input_weights_reverse},
-            {cell_gate_input_biases_reverse},
-            {cell_gate_hidden_weights_reverse},
-            {cell_gate_hidden_biases_reverse},
-        );
+    lstm.reverse.forget_gate = create_gate_controller(
+        {forget_gate_input_weights_reverse},
+        {forget_gate_input_biases_reverse},
+        {forget_gate_hidden_weights_reverse},
+        {forget_gate_hidden_biases_reverse},
+        &device,
+    );
 
-        lstm.output_gate_reverse = create_gate_controller(
-            {output_gate_input_weights_reverse},
-            {output_gate_input_biases_reverse},
-            {output_gate_hidden_weights_reverse},
-            {output_gate_hidden_biases_reverse},
-        );
+    lstm.reverse.cell_gate = create_gate_controller(
+        {cell_gate_input_weights_reverse},
+        {cell_gate_input_biases_reverse},
+        {cell_gate_hidden_weights_reverse},
+        {cell_gate_hidden_biases_reverse},
+        &device,
+    );
 
-        let expected_result = Data::from({array_to_str(forward_result.detach().numpy(), 5)});
+    lstm.reverse.output_gate = create_gate_controller(
+        {output_gate_input_weights_reverse},
+        {output_gate_input_biases_reverse},
+        {output_gate_hidden_weights_reverse},
+        {output_gate_hidden_biases_reverse},
+        &device,
+    );
 
-        let (_, hidden_state) = lstm.forward(input, None);
+    let expected_output_with_init_state = Data::from({array_to_str(forward_result_with_init_state.detach().numpy(), 5)});
+    let expected_output_without_init_state = Data::from({array_to_str(forward_result_without_init_state.detach().numpy(), 5)});
+    let expected_hn_with_init_state = Data::from({array_to_str(hn_with_init_state.detach().numpy(), 5)});
+    let expected_cn_with_init_state = Data::from({array_to_str(cn_with_init_state.detach().numpy(), 5)});
+    let expected_hn_without_init_state = Data::from({array_to_str(hn_without_init_state.detach().numpy(), 5)});
+    let expected_cn_without_init_state = Data::from({array_to_str(cn_without_init_state.detach().numpy(), 5)});
 
-        hidden_state.to_data().assert_approx_eq(&expected_result, 3)
+    let (output_with_init_state, state_with_init_state) = lstm.forward(input.clone(), Some(LstmState::new(c0, h0)));
+    let (output_without_init_state, state_without_init_state) = lstm.forward(input, None);
+
+    output_with_init_state.to_data().assert_approx_eq(&expected_output_with_init_state, 3);
+    output_without_init_state.to_data().assert_approx_eq(&expected_output_without_init_state, 3);
+    state_with_init_state.hidden.to_data().assert_approx_eq(&expected_hn_with_init_state, 3);
+    state_with_init_state.cell.to_data().assert_approx_eq(&expected_cn_with_init_state, 3);
+    state_without_init_state.hidden.to_data().assert_approx_eq(&expected_hn_without_init_state, 3);
+    state_without_init_state.cell.to_data().assert_approx_eq(&expected_cn_without_init_state, 3);
 }}
 """.strip()
 
